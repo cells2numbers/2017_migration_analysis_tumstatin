@@ -1,0 +1,74 @@
+---
+title: "Normalize data"
+author: "TB"
+date: "11/21/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tidyverse")
+library("magrittr")
+```
+
+
+# Load data 
+Load tracking data created using MATLAB as normalized and not normalized data. 
+
+The normalization was performed using cytominer::normalize and the following variables 
+are normalized: 
+* "Track_Speed",
+* "Track_Speed_Y",
+* "Track_Speed_X",
+* "Track_xFMI",
+* "Track_yFMI",
+* "Track_Directionality",
+* "Track_Distance_Traveled", 
+* "Track_CI"
+
+
+```{r}
+csv_tracks <- 'tracks.csv'
+csv_normalized <- 'normalized.csv'
+analysis_folder <- '../data/'
+
+# grouping variables 
+strata <- c('Metadata_condition','Metadata_dose','Metadata_id','Metadata_matrix')
+
+
+```
+
+# load data 
+We load the data and
+* update the Metadata for one experiment
+* remove short trajectories 
+```{r} 
+population <- read_csv(file.path(analysis_folder, csv_tracks)) %>%
+  filter(Track_Length > 19)
+
+population %>% select(Track_Speed) %>% print
+```
+
+We define the variables for normalization and use cytominer::normalize
+```{r}
+feature_var = c("Track_Speed","Track_Speed_Y","Track_Speed_X","Track_xFMI","Track_yFMI","Track_Directionality","Track_Distance_Traveled","Track_CI")
+
+normalized <-
+  cytominer::normalize(
+    population = population,
+    variables = feature_var,
+    strata =  "Metadata_id",
+    sample = population %>% filter(Metadata_condition == "vehicle"),
+    operation = "standardize"
+  )
+normalized %<>% dplyr::collect() 
+```
+
+# Save normalized data.
+```{r}
+write_csv(normalized, file.path(analysis_folder, csv_normalized))
+```
+
+

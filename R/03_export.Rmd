@@ -1,0 +1,199 @@
+---
+title: "Normalize data"
+author: "TB"
+date: "11/21/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tidyverse")
+library("magrittr")
+library("openxlsx")
+```
+
+This notebook creates the files analysis.xlsx, sector_analysis_per_experiment.xlsx, 
+
+
+```{r}
+csv_tracks <- 'tracks.csv'
+csv_normalized <- 'normalized.csv'
+analysis_folder <- '../data/'
+results_folder <- '../results/'
+
+# grouping variables 
+strata <- c('Metadata_condition','Metadata_dose','Metadata_matrix')
+
+
+```
+
+# load data 
+
+```{r} 
+normalized <- read_csv(file.path(analysis_folder, csv_normalized)) %>%
+  filter(Track_Length > 19)
+```
+Summarize and export mean and sem values for each EXPERIMENT
+```{r}
+analysis <- normalized %>% group_by_(.dots = strata) %>%
+  summarise(
+    "mean directionality" = mean(Track_Directionality),
+    "sem directionality" = sd(Track_Directionality) / sqrt(n()),
+    "mean speed" = mean(Track_Speed),
+    "sem speed" = sd(Track_Speed) / sqrt(n()),
+    "mean xFMI" = mean(Track_xFMI),
+    "sem xFMI" = sd(Track_xFMI) / sqrt(n()),
+    "mean yFMI" = mean(Track_yFMI),
+    "sem yFMI" = sd(Track_yFMI) / sqrt(n()),
+    n = n()
+  ) %>%
+  select(Metadata_matrix, Metadata_condition, Metadata_dose, everything()) %>% 
+  arrange(Metadata_matrix, Metadata_condition)
+```
+
+Export data as xls and csv
+```{r}
+write_csv(analysis, file.path(results_folder, "analysis.csv"))
+write.xlsx(analysis, file.path(results_folder, "analysis.xlsx"))
+```
+
+
+
+###############################################################################
+# Summarize and export mean and sem values for each SECTOR of each EXPERIMENT
+
+```{r}
+sector_analysis_temp <- normalized %>% 
+  group_by_(.dots = c(strata,"Track_Sector", "Metadata_id")) %>%
+  summarise(
+    "mean directionality" = mean(Track_Directionality),
+    "sem directionality" = sd(Track_Directionality) / sqrt(n()),
+    "mean speed" = mean(Track_Speed),
+    "sem speed" = sd(Track_Speed) / sqrt(n()),
+    "mean xFMI" = mean(Track_xFMI),
+    "sem xFMI" = sd(Track_xFMI) / sqrt(n()),
+    "mean yFMI" = mean(Track_yFMI),
+    "sem yFMI" = sd(Track_yFMI) / sqrt(n()),
+    n = n()
+  ) %>%
+  select(Metadata_matrix, Metadata_id, Metadata_condition, Metadata_dose, everything()) %>% 
+  arrange(Metadata_matrix, Metadata_condition, Metadata_id) %>%
+  print
+```
+
+Additionaly the fraction of tracks in each sector is summarized
+```{r}
+n_per_experiment <- normalized %>% 
+  group_by_(.dots = c(strata, "Metadata_id")) %>%
+  summarise("n_per_experiment" = n()) %>%
+  print
+
+sector_analysis <- left_join(
+  sector_analysis_temp, 
+  n_per_experiment,
+  by = c("Metadata_condition", "Metadata_dose", "Metadata_matrix", "Metadata_id")
+  ) %>%
+  mutate("fraction per sector in %" = n / n_per_experiment) %>% 
+  print
+```
+
+Export data as xls and csv
+```{r}
+write_csv(sector_analysis, file.path(results_folder, "sector_analysis_per_experiment.csv"))
+write.xlsx(sector_analysis, file.path(results_folder, "sector_analysis_per_experiment.xlsx"))
+```
+
+Sector analysis per condition
+```{r}
+sector_analysis_per_condition <- normalized %>% 
+  group_by_(.dots = c(strata,"Track_Sector")) %>%
+  summarise(
+    "mean directionality" = mean(Track_Directionality),
+    "sem directionality" = sd(Track_Directionality) / sqrt(n()),
+    "mean speed" = mean(Track_Speed),
+    "sem speed" = sd(Track_Speed) / sqrt(n()),
+    "mean xFMI" = mean(Track_xFMI),
+    "sem xFMI" = sd(Track_xFMI) / sqrt(n()),
+    "mean yFMI" = mean(Track_yFMI),
+    "sem yFMI" = sd(Track_yFMI) / sqrt(n()),
+    n = n()
+  ) %>%
+  select(Metadata_matrix, Metadata_condition, Metadata_dose, everything()) %>% 
+  arrange(Metadata_matrix, Metadata_condition) %>%
+  print
+```
+
+Export data as xls and csv
+```{r}
+write_csv(sector_analysis_per_condition, file.path(results_folder, "sector_analysis.csv"))
+write.xlsx(sector_analysis_per_condition, file.path(results_folder, "sector_analysis.xlsx"))
+```
+
+###############################################################################
+# Export subpopualtion walker / sneaker / runner or FN and HEM separetly 
+
+```{r}
+quantiles <- normalized %>% 
+  filter(Metadata_condition == "vehicle") %>%
+  filter(Metadata_matrix == "FN") %>%
+  extract2("Track_Speed") %>%
+  quantile(.,probs = c(.25, .75)) %>% 
+  as.vector()
+
+movements <- normalized %>% 
+  filter(Metadata_matrix == "FN",Metadata_dose != 0.5, Metadata_dose != "control") %>%
+  mutate(sneaker = (Track_Speed < quantiles[[1]])) %>%
+  mutate(walker = ( (Track_Speed > quantiles[[1]] )  & ( Track_Speed < quantiles[[2]] ) ) )  %>%
+  mutate(runner = (Track_Speed > quantiles[[2]])) %>%
+  print
+
+subpopulation_speed <- movements %>%  
+  ungroup() %>% 
+  group_by(Metadata_dose, Metadata_condition) %>%
+  summarise("mean sneaker" = mean(sneaker), "sem sneaker" = sd(sneaker)/sqrt(n()),
+            "mean walker" = mean(walker), "sem walker" = sd(walker)/sqrt(n()),
+            "mean runner" = mean(runner), "sem runner" = sd(runner)/sqrt(n()), 
+            n = n()
+    ) %>% print
+
+subpopulation_speed %>% 
+  write_csv(file.path(results_folder, "subpopulation_speed_fn.csv"))
+
+subpopulation_speed %>% 
+  write.xlsx(file.path(results_folder, "subpopulation_speed_fn.xlsx"))
+
+```
+
+```{r}
+quantiles <- normalized %>% 
+  filter(Metadata_condition == "vehicle") %>%
+  filter(Metadata_matrix == "HEM") %>%
+  extract2("Track_Speed") %>%
+  quantile(.,probs = c(.25, .75)) %>% 
+  as.vector()
+
+movements <- normalized %>% 
+  filter(Metadata_matrix == "HEM",Metadata_dose != 0.5, Metadata_dose != "control") %>%
+  mutate(sneaker = (Track_Speed < quantiles[[1]])) %>%
+  mutate(walker = ( (Track_Speed > quantiles[[1]] )  & ( Track_Speed < quantiles[[2]] ) ) )  %>%
+  mutate(runner = (Track_Speed > quantiles[[2]])) %>%
+  print
+
+subpopulation_speed <- movements %>%  
+  ungroup() %>% 
+  group_by(Metadata_dose, Metadata_condition) %>%
+  summarise("mean sneaker" = mean(sneaker), "sem sneaker" = sd(sneaker)/sqrt(n()),
+            "mean walker" = mean(walker), "sem walker" = sd(walker)/sqrt(n()),
+            "mean runner" = mean(runner), "sem runner" = sd(runner)/sqrt(n()), 
+            n = n()
+    ) %>% print
+
+subpopulation_speed %>% 
+  write_csv(file.path(results_folder, "subpopulation_speed_hem.csv"))
+
+subpopulation_speed %>% 
+  write.xlsx(file.path(results_folder, "subpopulation_speed_hem.xlsx"))
+
+```

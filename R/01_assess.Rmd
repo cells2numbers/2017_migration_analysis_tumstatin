@@ -1,0 +1,59 @@
+---
+title: "Assess tracking quality"
+author: "TB"
+date: "11/21/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("tidyverse")
+library("openxlsx")
+```
+
+# Define input / output  
+```{r}
+csv_tracks <- 'tracks.csv'
+csv_assessed <- 'assessed.csv'
+
+analysis_folder <- '../data'
+results_folder <- '../results'
+```
+
+# Load data 
+```{r}
+strata <- c('Metadata_condition','Metadata_dose','Metadata_id','Metadata_matrix')
+
+population <- read_csv(file.path(analysis_folder,csv_tracks)) %>% 
+  group_by_(.dots = strata) %>%
+  print
+```
+
+# Assess quality
+```{r}
+assessed <- left_join(
+  
+  quality <- population %>% 
+    neutrominer::assess(.,min_path_length = 20),
+  
+  population %>%
+    filter(Track_Length > 19) %>%
+    summarise(
+      tracks_in_positive_sector = sum(Track_Positive_Sector),
+      tracks_in_negative_sector = sum(Track_Negative_Sector),
+      tracks_in_neutral_up_sector = sum(Track_Neutral_Sector_Up),
+      tracks_in_neutral_down_sector = sum(Track_Neutral_Sector_Down)),
+  by_ = strata) %>%
+  select(-sum_track) %>%
+  select(Metadata_id, Metadata_matrix, Metadata_condition, Metadata_dose, VOT, everything()) %>%
+  arrange(Metadata_matrix, Metadata_dose) %>% 
+  print
+
+```
+
+#Export data 
+```{r}
+write_csv(assessed,  file.path(results_folder, csv_assessed))
+write.xlsx(assessed, file.path(results_folder, "assessed.xlsx"))
+
+```
